@@ -1,0 +1,144 @@
+esphome:
+  name: videodoorbell
+  platform: ESP32
+  board: esp-wrover-kit
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pwd
+  manual_ip:
+    static_ip: x.x.x.x
+    gateway: x.x.x.x
+    subnet: x.x.x.x
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: !secret videodb_ota_ssid
+    password: !secret videodb_ota_pwd
+
+captive_portal:
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  password: !secret videodb_ota_pwd
+
+ota:
+  password: !secret videodb_ota_pwd
+
+# The below GPIO's apply ONLY to the TTGO T-Camera w/Mic
+# which are slightly different from the one without
+binary_sensor:
+  - platform: gpio
+    pin: GPIO19
+    name: doorbell PIR
+    device_class: motion
+
+  - platform: gpio
+    pin:
+      number: GPIO15
+      mode: INPUT_PULLUP
+      inverted: True
+    name: doorbell button
+    # On press show ding dong page and activate doorbell script in Home Assistant
+    on_press:
+      then:
+        - display.page.show: ding_page
+        - component.update: doorbell_display
+        - delay: 2s
+        - display.page.show: name_page
+        - component.update: doorbell_display
+        - homeassistant.service: 
+            service: script.turn_on
+            data:
+              entity_id: "script.doorbell"
+ If front door is opened, show come in page
+  - platform: homeassistant
+    name: "Doorbell Copy Door Relay"
+    entity_id: switch.door_lock_relay
+    id: door_lock
+    on_press:
+      then:
+        - display.page.show: come_in_page
+        - component.update: doorbell_display
+        - delay: 5s
+        - display.page.show: name_page
+        - component.update: doorbell_display
+  - platform: status
+    name: doorbell status
+    
+sensor:
+  - platform: wifi_signal
+    name: doorbell WiFi Signal
+    update_interval: 10s
+  - platform: uptime
+    name: doorbell Uptime
+    
+switch:
+  - platform: restart
+    name: "Doorbell Restart"
+
+esp32_camera:
+  name: Doorbell Camera
+  external_clock:
+    pin: GPIO04
+    frequency: 20MHz
+  i2c_pins:
+    sda: GPIO18
+    scl: GPIO23
+  data_pins: [GPIO34, GPIO13, GPIO14, GPIO35, GPIO39, GPIO38, GPIO37, GPIO36]
+  vsync_pin: GPIO5
+  href_pin: GPIO27
+  pixel_clock_pin: GPIO25
+  resolution: 640x480
+  max_framerate: 5 fps
+  idle_framerate: 0 fps
+  jpeg_quality: 10
+  vertical_flip: true
+  horizontal_mirror: true
+
+
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+
+# I chose another TrueType Font from http://files.all-free-download.com/
+# Any TTF will work you jsut need to play with eh settings a bit
+font:
+  - file: "fonts/Mesa Grande.ttf" 
+    id: tnr1
+    size: 15
+  - file: "fonts/Mesa Grande.ttf"
+    id: tnr2
+    size: 25
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    rotation: 180
+    address: 0x3C
+    id: doorbell_display
+    pages:
+  # Name page We have three last names in our hoursehold so I added them here but
+  # I don'tsee why you couldn't also use this as a address marker or sometihng else
+      - id: name_page
+        lambda: |-
+          it.print(64, 0, id(tnr1), TextAlign::TOP_CENTER, "Name");
+          it.print(64, 34, id(tnr1),TextAlign::BASELINE_CENTER,  "Name/Address");
+          it.print(66, 64, id(tnr1), TextAlign::BOTTOM_CENTER, "Other");
+  # Ding Dong page
+      - id: ding_page
+        lambda: |-
+            it.print(64, 0, id(tnr2), TextAlign::TOP_CENTER, "DING");
+            it.print(64, 64, id(tnr2), TextAlign::BASELINE_CENTER, "DONG");
+  #Welcome in page
+      - id: come_in_page
+        lambda: |-
+            it.print(64, 0, id(tnr2), TextAlign::TOP_CENTER, "Come");
+            it.print(64, 64, id(tnr2), TextAlign::BASELINE_CENTER, "in");
